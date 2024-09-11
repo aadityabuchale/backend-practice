@@ -3,16 +3,12 @@ const fs = require("fs");
 const url = require("url");
 
 const server = http.createServer((req, res) => {
-	console.log(req.method);
-
 	const method = req.method.toUpperCase();
 	const urlInfo = url.parse(req.url, true);
 	const queryObj = urlInfo.query;
 
-	// for reading all the directories
-
-	const dirs = fs.readdirSync("./files");
-
+	// Set CORS headers for all requests
+	res.setHeader("Access-Control-Allow-Origin", "*");
 	res.setHeader(
 		"Access-Control-Allow-Methods",
 		"GET, POST, PUT, DELETE, OPTIONS"
@@ -21,55 +17,92 @@ const server = http.createServer((req, res) => {
 		"Access-Control-Allow-Headers",
 		"Content-Type, Authorization"
 	);
+
+	// for reading all the directories
+	const dirs = fs.readdirSync("../files");
+
 	let filesData = [];
 
+	// Handle CORS preflight (OPTIONS) requests
 	if (method === "OPTIONS") {
-		res.writeHead(204);
+		res.writeHead(203); // No content for OPTIONS
 		res.end();
 		return;
 	}
 
 	if (method === "GET") {
+		// Read all files in the directory
 		for (let dir of dirs) {
-			const data = fs.readFileSync(`./files/${dir}`, "utf-8");
+			const data = fs.readFileSync(`../files/${dir}`, "utf-8");
 			filesData.push({ filename: dir, content: data });
 		}
 
+		// Return the files data
+		res.writeHead(200, {
+			"Content-Type": "application/json",
+		});
 		res.write(JSON.stringify(filesData));
 		res.end();
 	} else if (method === "POST") {
 		let data = "";
 
-		console.log("here inside post");
-
 		req.on("data", (chunk) => {
-			data = data + chunk;
+			data += chunk;
 		});
 
-		req.on("close", () => {
+		req.on("end", () => {
 			const parsedData = JSON.parse(data);
 
 			fs.writeFile(
-				`./files/${parsedData.filename}`,
+				`../files/${parsedData.filename}`,
 				parsedData.content,
 				"utf-8",
 				(err) => {
-					console.log(err);
+					if (err) {
+						res.writeHead(500, {
+							"Content-Type": "application/json",
+						});
+						res.write(
+							JSON.stringify({ message: "Failed to create file" })
+						);
+						res.end();
+					} else {
+						res.writeHead(201, {
+							"Content-Type": "application/json",
+						});
+						res.write(
+							JSON.stringify({
+								message: "File created successfully",
+							})
+						);
+						res.end();
+					}
 				}
 			);
-			res.end();
 		});
 	} else if (method === "DELETE") {
-		console.log(queryObj.filename);
+		const filename = queryObj.filename;
 
-		fs.unlink(`./files/${queryObj.filename}`, (err) => {
+		fs.unlink(`../files/${filename}`, (err) => {
 			if (err) {
-				console.log(err);
-				res.write(err);
+				res.writeHead(500, {
+					"Content-Type": "application/json",
+				});
+				res.write(JSON.stringify({ message: "File not found" }));
+				res.end();
+			} else {
+				res.writeHead(200, {
+					"Content-Type": "application/json",
+				});
+				res.write(
+					JSON.stringify({ message: `File ${filename} deleted` })
+				);
 				res.end();
 			}
 		});
 	}
 });
 
-server.listen(8080);
+server.listen(8080, () => {
+	console.log("Server listening on port 8080");
+});
